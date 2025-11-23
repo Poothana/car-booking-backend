@@ -1,0 +1,28 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class CarPriceDetail extends Model
+{
+    use HasFactory;
+
+    protected $table = 'car_price_details';
+
+    protected $fillable = [
+        'car_id',
+        'price_type',
+        'min_hours',
+    ];
+
+    /**
+     * Get the car that owns the price detail.
+     */
+    public function car()
+    {
+        return $this->belongsTo(Car::class);
+    }
+}
+
