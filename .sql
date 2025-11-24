@@ -30,6 +30,27 @@ ALTER TABLE `car_additional_details`
 ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT NULL,
 ADD COLUMN `updated_at` TIMESTAMP NULL DEFAULT NULL;
 
+ALTER TABLE car_additional_details
+ADD COLUMN amenity TEXT;
+
+CREATE TABLE amenities (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL
+);
+
+
+INSERT INTO amenities (name) VALUES
+('Air Conditioning'),
+('Automatic Transmission'),
+('GPS / Navigation'),
+('Bluetooth'),
+('Leather Seats'),
+('Heated Seats'),
+('Child Seat'),
+('Cruise Control'),
+('Backup Camera'),
+('Parking Sensors');
+
 
 CREATE TABLE car_price_details (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -42,6 +63,9 @@ CREATE TABLE car_price_details (
 ALTER TABLE `car_price_details`
 ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT NULL,
 ADD COLUMN `updated_at` TIMESTAMP NULL DEFAULT NULL;
+
+ALTER TABLE car_price_details
+ADD COLUMN price DECIMAL(10,2) NOT NULL DEFAULT 0;
 
 CREATE TABLE car_discount_price_details (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -56,3 +80,18 @@ CREATE TABLE car_discount_price_details (
 ALTER TABLE `car_discount_price_details`
 ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT NULL,
 ADD COLUMN `updated_at` TIMESTAMP NULL DEFAULT NULL;
+
+
+CREATE TABLE price_type (
+    id INT NOT NULL AUTO_INCREMENT,
+    type_name VARCHAR(50) NOT NULL,
+    PRIMARY KEY (id)
+);
+
+INSERT INTO price_type (type_name) VALUES
+('day'),
+('week'),
+('month'),
+('hour'),
+('trip'),
+('km');

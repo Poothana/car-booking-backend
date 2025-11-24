@@ -14,6 +14,11 @@ class CarAdditionalDetail extends Model
     protected $fillable = [
         'car_id',
         'no_of_seats',
+        'amenity',
+    ];
+
+    protected $casts = [
+        'amenity' => 'array',
     ];
 
     /**

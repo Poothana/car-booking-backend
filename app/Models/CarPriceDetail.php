@@ -15,6 +15,11 @@ class CarPriceDetail extends Model
         'car_id',
         'price_type',
         'min_hours',
+        'price',
+    ];
+
+    protected $casts = [
+        'price' => 'decimal:2',
     ];
 
     /**

@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Amenity;
 use App\Models\Car;
 use App\Models\CarCategory;
+use App\Models\PriceType;
 use App\Repositories\CarRepositoryInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,7 +27,7 @@ class CarController extends Controller
      */
     public function list(): JsonResponse
     {
-        $cars = Car::with('category')
+        $cars = Car::with(['category', 'priceDetails', 'discountPriceDetails', 'additionalDetails'])
             ->where('is_active', true)
             ->get();
 
@@ -75,6 +77,36 @@ class CarController extends Controller
     }
 
     /**
+     * Fetch all price types.
+     *
+     * @return JsonResponse
+     */
+    public function priceType(): JsonResponse
+    {
+        $priceTypes = PriceType::orderBy('type_name')->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $priceTypes,
+        ]);
+    }
+
+    /**
+     * Fetch all amenities.
+     *
+     * @return JsonResponse
+     */
+    public function amenities(): JsonResponse
+    {
+        $amenities = Amenity::orderBy('name')->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $amenities,
+        ]);
+    }
+
+    /**
      * Add a new car with additional details.
      *
      * @param Request $request
@@ -90,9 +122,12 @@ class CarController extends Controller
             'is_active' => 'nullable|boolean',
             'additional_details' => 'nullable|array',
             'additional_details.no_of_seats' => 'required_with:additional_details|integer|min:1',
+            'additional_details.amenities' => 'nullable|array',
+            'additional_details.amenities.*' => 'nullable|integer|exists:amenities,id',
             'price_details' => 'nullable|array',
             'price_details.*.price_type' => 'required_with:price_details|in:day,week,trip',
             'price_details.*.min_hours' => 'nullable|integer|min:0',
+            'price_details.*.price' => 'required_with:price_details|numeric|min:0',
             'discount_price_details' => 'nullable|array',
             'discount_price_details.*.price_type' => 'required_with:discount_price_details|in:day,week,trip',
             'discount_price_details.*.price' => 'required_with:discount_price_details|numeric|min:0',
@@ -153,9 +188,12 @@ class CarController extends Controller
             'is_active' => 'nullable|boolean',
             'additional_details' => 'nullable|array',
             'additional_details.no_of_seats' => 'required_with:additional_details|integer|min:1',
+            'additional_details.amenities' => 'nullable|array',
+            'additional_details.amenities.*' => 'nullable|integer|exists:amenities,id',
             'price_details' => 'nullable|array',
             'price_details.*.price_type' => 'required_with:price_details|in:day,week,trip',
             'price_details.*.min_hours' => 'nullable|integer|min:0',
+            'price_details.*.price' => 'required_with:price_details|numeric|min:0',
             'discount_price_details' => 'nullable|array',
             'discount_price_details.*.price_type' => 'required_with:discount_price_details|in:day,week,trip',
             'discount_price_details.*.price' => 'required_with:discount_price_details|numeric|min:0',

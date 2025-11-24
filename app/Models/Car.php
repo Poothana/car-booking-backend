@@ -52,5 +52,13 @@ class Car extends Model
     {
         return $this->hasMany(CarDiscountPriceDetail::class);
     }
+
+    /**
+     * Get the amenities for the car.
+     */
+    public function amenities()
+    {
+        return $this->belongsToMany(Amenity::class, 'car_amenities', 'car_id', 'amenity_id');
+    }
 }
 

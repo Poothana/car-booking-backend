@@ -45,10 +45,17 @@ class CarRepository implements CarRepositoryInterface
 
             // Create additional details if provided
             if (isset($data['additional_details']['no_of_seats'])) {
-                CarAdditionalDetail::create([
+                $additionalData = [
                     'car_id' => $car->id,
                     'no_of_seats' => $data['additional_details']['no_of_seats'],
-                ]);
+                ];
+
+                // Add amenities as JSON if provided
+                if (isset($data['additional_details']['amenities']) && is_array($data['additional_details']['amenities'])) {
+                    $additionalData['amenity'] = json_encode($data['additional_details']['amenities']);
+                }
+
+                CarAdditionalDetail::create($additionalData);
             }
 
             // Create price details if provided
@@ -58,6 +65,7 @@ class CarRepository implements CarRepositoryInterface
                         'car_id' => $car->id,
                         'price_type' => $priceDetail['price_type'],
                         'min_hours' => $priceDetail['min_hours'] ?? 0,
+                        'price' => $priceDetail['price'] ?? 0,
                     ]);
                 }
             }
@@ -170,17 +178,28 @@ class CarRepository implements CarRepositoryInterface
             }
 
             // Update or create additional details if provided
-            if (isset($data['additional_details']['no_of_seats'])) {
+            if (isset($data['additional_details']['no_of_seats']) || isset($data['additional_details']['amenities'])) {
                 $additionalDetail = CarAdditionalDetail::where('car_id', $car->id)->first();
+                
+                $updateData = [];
+                
+                if (isset($data['additional_details']['no_of_seats'])) {
+                    $updateData['no_of_seats'] = $data['additional_details']['no_of_seats'];
+                }
+                
+                // Update amenities as JSON if provided
+                if (isset($data['additional_details']['amenities']) && is_array($data['additional_details']['amenities'])) {
+                    $updateData['amenity'] = json_encode($data['additional_details']['amenities']);
+                }
+                
                 if ($additionalDetail) {
-                    $additionalDetail->update([
-                        'no_of_seats' => $data['additional_details']['no_of_seats'],
-                    ]);
+                    $additionalDetail->update($updateData);
                 } else {
-                    CarAdditionalDetail::create([
-                        'car_id' => $car->id,
-                        'no_of_seats' => $data['additional_details']['no_of_seats'],
-                    ]);
+                    $updateData['car_id'] = $car->id;
+                    if (!isset($updateData['no_of_seats'])) {
+                        $updateData['no_of_seats'] = 0; // Default value if not provided
+                    }
+                    CarAdditionalDetail::create($updateData);
                 }
             }
 
@@ -195,6 +214,7 @@ class CarRepository implements CarRepositoryInterface
                         'car_id' => $car->id,
                         'price_type' => $priceDetail['price_type'],
                         'min_hours' => $priceDetail['min_hours'] ?? 0,
+                        'price' => $priceDetail['price'] ?? 0,
                     ]);
                 }
             }
