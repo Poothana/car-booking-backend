@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\CarController;
+use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\BookingController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/cars/list', [CarController::class, 'list']);
@@ -12,4 +14,8 @@ Route::match(['put', 'post'], '/admin/car/update/{id}', [CarController::class, '
 
 Route::get('/price-type', [CarController::class, 'priceType']);
 Route::get('/amenities', [CarController::class, 'amenities']);
+
+Route::post('/customer/add', [CustomerController::class, 'add']);
+
+Route::post('/booking/add', [BookingController::class, 'add']);
 

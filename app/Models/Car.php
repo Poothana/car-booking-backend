@@ -60,5 +60,13 @@ class Car extends Model
     {
         return $this->belongsToMany(Amenity::class, 'car_amenities', 'car_id', 'amenity_id');
     }
+
+    /**
+     * Get the bookings for the car.
+     */
+    public function bookings()
+    {
+        return $this->hasMany(CarBooking::class);
+    }
 }
 

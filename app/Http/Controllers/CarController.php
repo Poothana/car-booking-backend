@@ -7,6 +7,7 @@ use App\Models\Car;
 use App\Models\CarCategory;
 use App\Models\PriceType;
 use App\Repositories\CarRepositoryInterface;
+use App\Services\PriceCalculationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -15,21 +16,74 @@ use Illuminate\Support\Facades\Validator;
 class CarController extends Controller
 {
     protected CarRepositoryInterface $carRepository;
+    protected PriceCalculationService $priceCalculationService;
 
-    public function __construct(CarRepositoryInterface $carRepository)
+    public function __construct(CarRepositoryInterface $carRepository, PriceCalculationService $priceCalculationService)
     {
         $this->carRepository = $carRepository;
+        $this->priceCalculationService = $priceCalculationService;
     }
     /**
      * Fetch all cars with their categories.
+     * Optionally filter by availability based on journey dates.
      *
+     * @param Request $request
      * @return JsonResponse
      */
-    public function list(): JsonResponse
+    public function list(Request $request): JsonResponse
     {
-        $cars = Car::with(['category', 'priceDetails', 'discountPriceDetails', 'additionalDetails'])
-            ->where('is_active', true)
-            ->get();
+        $validator = Validator::make($request->all(), [
+            'car_id' => 'nullable|exists:cars,id',
+            'journey_start_date' => 'nullable|date',
+            'journey_end_date' => 'nullable|date|after:journey_start_date',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $query = Car::with(['category', 'priceDetails', 'discountPriceDetails', 'additionalDetails'])
+            ->where('is_active', true);
+
+        // Filter by car_id if provided
+        if ($request->has('car_id')) {
+            $query->where('id', $request->car_id);
+        }
+
+        // Filter by availability if journey dates are provided
+        if ($request->has('journey_start_date') && $request->has('journey_end_date')) {
+            $journeyStartDate = $request->journey_start_date;
+            $journeyEndDate = $request->journey_end_date;
+
+            // Exclude cars that have overlapping bookings (excluding cancelled bookings)
+            $query->whereDoesntHave('bookings', function ($q) use ($journeyStartDate, $journeyEndDate) {
+                $q->where('status', '!=', 'cancelled')
+                  ->where(function ($subQuery) use ($journeyStartDate, $journeyEndDate) {
+                      // Check for overlap: booking starts before or on requested end date
+                      // AND booking ends after or on requested start date
+                      $subQuery->where('journey_from_date', '<=', $journeyEndDate)
+                               ->where('journey_end_date', '>=', $journeyStartDate);
+                  });
+            });
+        }
+
+        $cars = $query->get();
+
+        // Ensure amenity_names is calculated for each car's additional details
+        // and add display prices
+        $cars->each(function ($car) {
+            if ($car->additionalDetails) {
+                // Force accessor to be called by accessing the attribute
+                $car->additionalDetails->amenity_names;
+            }
+            
+            // Calculate and add display prices
+            $car->display_price = $this->priceCalculationService->calculateDisplayPrices($car);
+        });
 
         return response()->json([
             'success' => true,
@@ -48,6 +102,11 @@ class CarController extends Controller
         try {
             $car = Car::with(['category', 'additionalDetails', 'priceDetails', 'discountPriceDetails'])
                 ->findOrFail($id);
+
+            // Force accessor to be called by accessing the attribute
+            if ($car->additionalDetails) {
+                $car->additionalDetails->amenity_names;
+            }
 
             return response()->json([
                 'success' => true,

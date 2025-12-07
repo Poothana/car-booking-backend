@@ -50,9 +50,9 @@ class CarRepository implements CarRepositoryInterface
                     'no_of_seats' => $data['additional_details']['no_of_seats'],
                 ];
 
-                // Add amenities as JSON if provided
+                // Add amenities as array (will be auto-encoded to JSON by model cast)
                 if (isset($data['additional_details']['amenities']) && is_array($data['additional_details']['amenities'])) {
-                    $additionalData['amenity'] = json_encode($data['additional_details']['amenities']);
+                    $additionalData['amenity'] = $data['additional_details']['amenities'];
                 }
 
                 CarAdditionalDetail::create($additionalData);
@@ -187,9 +187,9 @@ class CarRepository implements CarRepositoryInterface
                     $updateData['no_of_seats'] = $data['additional_details']['no_of_seats'];
                 }
                 
-                // Update amenities as JSON if provided
+                // Update amenities as array (will be auto-encoded to JSON by model cast)
                 if (isset($data['additional_details']['amenities']) && is_array($data['additional_details']['amenities'])) {
-                    $updateData['amenity'] = json_encode($data['additional_details']['amenities']);
+                    $updateData['amenity'] = $data['additional_details']['amenities'];
                 }
                 
                 if ($additionalDetail) {
