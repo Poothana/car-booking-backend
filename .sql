@@ -55,7 +55,7 @@ INSERT INTO amenities (name) VALUES
 CREATE TABLE car_price_details (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     car_id BIGINT  NOT NULL,
-    price_type ENUM('day', 'week', 'trip') NOT NULL,
+    price_type ENUM('day', 'week', 'trip', 'km') NOT NULL,
     min_hours INT DEFAULT 0,
     CONSTRAINT fk_additional_car FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE
 );
@@ -66,6 +66,9 @@ ADD COLUMN `updated_at` TIMESTAMP NULL DEFAULT NULL;
 
 ALTER TABLE car_price_details
 ADD COLUMN price DECIMAL(10,2) NOT NULL DEFAULT 0;
+
+ALTER TABLE car_price_details
+ADD COLUMN fuel_charge DECIMAL(10,2) DEFAULT 0;
 
 CREATE TABLE car_discount_price_details (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,

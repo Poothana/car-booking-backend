@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('car_price_details', function (Blueprint $table) {
             $table->id();
             $table->foreignId('car_id')->constrained('cars')->onDelete('cascade');
-            $table->enum('price_type', ['day', 'week', 'trip']);
+            $table->enum('price_type', ['day', 'week', 'trip', 'km']);
             $table->integer('min_hours')->default(0);
             $table->timestamps();
         });

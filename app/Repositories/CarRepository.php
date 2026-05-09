@@ -60,12 +60,32 @@ class CarRepository implements CarRepositoryInterface
 
             // Create price details if provided
             if (isset($data['price_details']) && is_array($data['price_details'])) {
+                // Get root-level fuel_charge_per_liter if it exists
+                $rootFuelCharge = isset($data['fuel_charge_per_liter']) ? $data['fuel_charge_per_liter'] : null;
+                
                 foreach ($data['price_details'] as $priceDetail) {
+                    // Get fuel_charge_per_liter value, with priority:
+                    // 1. Per-item fuel_charge_per_liter
+                    // 2. Root-level fuel_charge_per_liter
+                    // 3. Per-item fuel_charge
+                    // 4. Default to 0
+                    $fuelCharge = 0;
+                    if (isset($priceDetail['fuel_charge_per_liter'])) {
+                        $fuelCharge = $priceDetail['fuel_charge_per_liter'];
+                    } elseif ($rootFuelCharge !== null) {
+                        $fuelCharge = $rootFuelCharge;
+                    } elseif (isset($priceDetail['fuel_charge'])) {
+                        $fuelCharge = $priceDetail['fuel_charge'];
+                    }
+                    
                     CarPriceDetail::create([
                         'car_id' => $car->id,
+                        'range_type' => $priceDetail['range_type'] ?? null,
                         'price_type' => $priceDetail['price_type'],
                         'min_hours' => $priceDetail['min_hours'] ?? 0,
                         'price' => $priceDetail['price'] ?? 0,
+                        'fuel_charge' => $fuelCharge,
+                        'driver_betta' => $priceDetail['driver_betta'] ?? 0,
                     ]);
                 }
             }
@@ -208,13 +228,33 @@ class CarRepository implements CarRepositoryInterface
                 // Delete existing price details
                 CarPriceDetail::where('car_id', $car->id)->delete();
 
+                // Get root-level fuel_charge_per_liter if it exists
+                $rootFuelCharge = isset($data['fuel_charge_per_liter']) ? $data['fuel_charge_per_liter'] : null;
+
                 // Create new price details
                 foreach ($data['price_details'] as $priceDetail) {
+                    // Get fuel_charge_per_liter value, with priority:
+                    // 1. Per-item fuel_charge_per_liter
+                    // 2. Root-level fuel_charge_per_liter
+                    // 3. Per-item fuel_charge
+                    // 4. Default to 0
+                    $fuelCharge = 0;
+                    if (isset($priceDetail['fuel_charge_per_liter'])) {
+                        $fuelCharge = $priceDetail['fuel_charge_per_liter'];
+                    } elseif ($rootFuelCharge !== null) {
+                        $fuelCharge = $rootFuelCharge;
+                    } elseif (isset($priceDetail['fuel_charge'])) {
+                        $fuelCharge = $priceDetail['fuel_charge'];
+                    }
+                    
                     CarPriceDetail::create([
                         'car_id' => $car->id,
+                        'range_type' => $priceDetail['range_type'] ?? null,
                         'price_type' => $priceDetail['price_type'],
                         'min_hours' => $priceDetail['min_hours'] ?? 0,
                         'price' => $priceDetail['price'] ?? 0,
+                        'fuel_charge' => $fuelCharge,
+                        'driver_betta' => $priceDetail['driver_betta'] ?? 0,
                     ]);
                 }
             }

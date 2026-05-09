@@ -11,7 +11,10 @@ use App\Services\PriceCalculationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class CarController extends Controller
 {
@@ -22,6 +25,45 @@ class CarController extends Controller
     {
         $this->carRepository = $carRepository;
         $this->priceCalculationService = $priceCalculationService;
+    }
+
+    /**
+     * Normalize multipart / JSON values so Laravel integer rules accept numeric strings like "5.0".
+     */
+    protected function normalizeCarFormInput(Request $request): void
+    {
+        if ($request->has('additional_details') && is_array($request->input('additional_details'))) {
+            $details = $request->input('additional_details');
+            if (array_key_exists('no_of_seats', $details) && is_numeric($details['no_of_seats'])) {
+                $details['no_of_seats'] = (int) round((float) $details['no_of_seats']);
+            }
+            if (isset($details['amenities']) && is_array($details['amenities'])) {
+                $details['amenities'] = array_values(array_filter(
+                    array_map(static function ($id) {
+                        if ($id === null || $id === '') {
+                            return null;
+                        }
+
+                        return (int) $id;
+                    }, $details['amenities']),
+                    static fn ($id) => $id !== null && $id > 0
+                ));
+            }
+            $request->merge(['additional_details' => $details]);
+        }
+
+        $priceDetails = $request->input('price_details');
+        if (is_array($priceDetails)) {
+            foreach ($priceDetails as $i => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                if (isset($row['min_hours']) && is_numeric($row['min_hours'])) {
+                    $priceDetails[$i]['min_hours'] = (int) round((float) $row['min_hours']);
+                }
+            }
+            $request->merge(['price_details' => $priceDetails]);
+        }
     }
     /**
      * Fetch all cars with their categories.
@@ -36,6 +78,7 @@ class CarController extends Controller
             'car_id' => 'nullable|exists:cars,id',
             'journey_start_date' => 'nullable|date',
             'journey_end_date' => 'nullable|date|after:journey_start_date',
+            'include_inactive' => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -46,8 +89,13 @@ class CarController extends Controller
             ], 422);
         }
 
-        $query = Car::with(['category', 'priceDetails', 'discountPriceDetails', 'additionalDetails'])
-            ->where('is_active', true);
+        $query = Car::with(['category', 'priceDetails', 'discountPriceDetails', 'additionalDetails']);
+
+        // By default show only active cars (public list). Admin can request all.
+        $includeInactive = $request->boolean('include_inactive', false);
+        if (! $includeInactive) {
+            $query->where('is_active', true);
+        }
 
         // Filter by car_id if provided
         if ($request->has('car_id')) {
@@ -108,9 +156,58 @@ class CarController extends Controller
                 $car->additionalDetails->amenity_names;
             }
 
+            // Format price_details array with fuel_charge_per_liter
+            $formattedPriceDetails = [];
+            $fuelChargePerLiter = null;
+            
+            if ($car->priceDetails && $car->priceDetails->count() > 0) {
+                foreach ($car->priceDetails as $index => $priceDetail) {
+                    // Get fuel_charge value - access the raw attribute to ensure we get the actual value
+                    $fuelCharge = $priceDetail->getAttribute('fuel_charge');
+                    
+                    // Handle null or empty values - default to 0
+                    if ($fuelCharge === null || $fuelCharge === '') {
+                        $fuelCharge = 0;
+                    }
+                    
+                    // Convert to float/number format
+                    $fuelCharge = is_numeric($fuelCharge) ? (float)$fuelCharge : 0;
+                    
+                    $formattedPriceDetails[] = [
+                        'range_type' => $priceDetail->range_type,
+                        'price_type' => $priceDetail->price_type,
+                        'price' => $priceDetail->price,
+                        'min_hours' => $priceDetail->min_hours ?? 0,
+                        'fuel_charge' => $fuelCharge,
+                        'fuel_charge_per_liter' => $fuelCharge,
+                        'driver_betta' => (float) ($priceDetail->driver_betta ?? 0),
+                    ];
+                    
+                    // Use the first price detail's fuel_charge as the root level value
+                    // (assuming all price details have the same fuel_charge)
+                    if ($fuelChargePerLiter === null) {
+                        $fuelChargePerLiter = $fuelCharge;
+                    }
+                }
+            }
+
+            // Convert car to array and modify price_details
+            $carData = $car->toArray();
+            $carData['price_details'] = $formattedPriceDetails;
+            
+            // Add fuel_charge_per_liter at root level
+            // Use the first price detail's value, or 0 if no price details exist
+            if ($fuelChargePerLiter !== null) {
+                $carData['fuel_charge_per_liter'] = $fuelChargePerLiter;
+            } elseif (isset($formattedPriceDetails[0]['fuel_charge_per_liter'])) {
+                $carData['fuel_charge_per_liter'] = $formattedPriceDetails[0]['fuel_charge_per_liter'];
+            } else {
+                $carData['fuel_charge_per_liter'] = 0;
+            }
+
             return response()->json([
                 'success' => true,
-                'data' => $car,
+                'data' => $carData,
             ], 200);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
@@ -173,6 +270,8 @@ class CarController extends Controller
      */
     public function add(Request $request): JsonResponse
     {
+        $this->normalizeCarFormInput($request);
+        Log::info('request data', $request->all());
         $validator = Validator::make($request->all(), [
             'car_name' => 'required|string|max:100',
             'car_model' => 'nullable|string|max:100',
@@ -184,15 +283,22 @@ class CarController extends Controller
             'additional_details.amenities' => 'nullable|array',
             'additional_details.amenities.*' => 'nullable|integer|exists:amenities,id',
             'price_details' => 'nullable|array',
-            'price_details.*.price_type' => 'required_with:price_details|in:day,week,trip',
+            'price_details.*.range_type' => ['nullable', Rule::in(['below 250km', 'above 250km', 'below_250km', 'above_250km'])],
+            'price_details.*.price_type' => 'required_with:price_details|in:day,week,trip,km',
             'price_details.*.min_hours' => 'nullable|integer|min:0',
             'price_details.*.price' => 'required_with:price_details|numeric|min:0',
+            'price_details.*.fuel_charge' => 'nullable|numeric|min:0',
+            'price_details.*.fuel_charge_per_liter' => 'nullable|numeric|min:0',
+            'price_details.*.driver_betta' => 'nullable|numeric|min:0',
+            'fuel_charge_per_liter' => 'nullable|numeric|min:0',
             'discount_price_details' => 'nullable|array',
             'discount_price_details.*.price_type' => 'required_with:discount_price_details|in:day,week,trip',
             'discount_price_details.*.price' => 'required_with:discount_price_details|numeric|min:0',
         ]);
 
         if ($validator->fails()) {
+            Log::warning('Car add validation failed', ['errors' => $validator->errors()->toArray()]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
@@ -209,7 +315,18 @@ class CarController extends Controller
                 'additional_details',
                 'price_details',
                 'discount_price_details',
+                'fuel_charge_per_liter',
             ]);
+
+            // Handle price_details if it's a JSON string
+            if (isset($data['price_details']) && is_string($data['price_details'])) {
+                $data['price_details'] = json_decode($data['price_details'], true);
+            }
+
+            // Handle discount_price_details if it's a JSON string
+            if (isset($data['discount_price_details']) && is_string($data['discount_price_details'])) {
+                $data['discount_price_details'] = json_decode($data['discount_price_details'], true);
+            }
 
             $image = $request->hasFile('car_image') ? $request->file('car_image') : null;
 
@@ -239,6 +356,7 @@ class CarController extends Controller
      */
     public function edit(Request $request, int $id): JsonResponse
     {
+        $this->normalizeCarFormInput($request);
         $validator = Validator::make($request->all(), [
             'car_name' => 'nullable|string|max:100',
             'car_model' => 'nullable|string|max:100',
@@ -250,9 +368,14 @@ class CarController extends Controller
             'additional_details.amenities' => 'nullable|array',
             'additional_details.amenities.*' => 'nullable|integer|exists:amenities,id',
             'price_details' => 'nullable|array',
-            'price_details.*.price_type' => 'required_with:price_details|in:day,week,trip',
+            'price_details.*.range_type' => ['nullable', Rule::in(['below 250km', 'above 250km', 'below_250km', 'above_250km'])],
+            'price_details.*.price_type' => 'required_with:price_details|in:day,week,trip,km',
             'price_details.*.min_hours' => 'nullable|integer|min:0',
             'price_details.*.price' => 'required_with:price_details|numeric|min:0',
+            'price_details.*.fuel_charge' => 'nullable|numeric|min:0',
+            'price_details.*.fuel_charge_per_liter' => 'nullable|numeric|min:0',
+            'price_details.*.driver_betta' => 'nullable|numeric|min:0',
+            'fuel_charge_per_liter' => 'nullable|numeric|min:0',
             'discount_price_details' => 'nullable|array',
             'discount_price_details.*.price_type' => 'required_with:discount_price_details|in:day,week,trip',
             'discount_price_details.*.price' => 'required_with:discount_price_details|numeric|min:0',
@@ -265,6 +388,8 @@ class CarController extends Controller
             ]);
             
             if ($fileValidator->fails()) {
+                Log::warning('Car edit image validation failed', ['errors' => $fileValidator->errors()->toArray()]);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
@@ -274,6 +399,8 @@ class CarController extends Controller
         }
 
         if ($validator->fails()) {
+            Log::warning('Car edit validation failed', ['errors' => $validator->errors()->toArray()]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
@@ -309,11 +436,27 @@ class CarController extends Controller
             }
             
             if ($request->has('price_details')) {
-                $data['price_details'] = $request->input('price_details');
+                $priceDetails = $request->input('price_details');
+                // Handle if it's a JSON string
+                if (is_string($priceDetails)) {
+                    $data['price_details'] = json_decode($priceDetails, true);
+                } else {
+                    $data['price_details'] = $priceDetails;
+                }
             }
             
             if ($request->has('discount_price_details')) {
-                $data['discount_price_details'] = $request->input('discount_price_details');
+                $discountPriceDetails = $request->input('discount_price_details');
+                // Handle if it's a JSON string
+                if (is_string($discountPriceDetails)) {
+                    $data['discount_price_details'] = json_decode($discountPriceDetails, true);
+                } else {
+                    $data['discount_price_details'] = $discountPriceDetails;
+                }
+            }
+            
+            if ($request->has('fuel_charge_per_liter')) {
+                $data['fuel_charge_per_liter'] = $request->input('fuel_charge_per_liter');
             }
             
             // Handle car_image - can be either file upload or string (image name)
@@ -346,6 +489,54 @@ class CarController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update car',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete a car and its related records.
+     */
+    public function delete(int $id): JsonResponse
+    {
+        try {
+            $car = Car::with(['additionalDetails', 'priceDetails', 'discountPriceDetails'])
+                ->findOrFail($id);
+
+            // Remove image file if stored in /storage/cars/{filename}
+            $image = $car->car_image_url;
+            if (is_string($image) && $image !== '') {
+                $filename = basename($image);
+                $path = "cars/{$filename}";
+                if (Storage::disk('public')->exists($path)) {
+                    Storage::disk('public')->delete($path);
+                }
+            }
+
+            // Remove pivot (if it exists in this DB) + children
+            if (Schema::hasTable('car_amenities')) {
+                $car->amenities()->detach();
+            }
+            $car->priceDetails()->delete();
+            $car->discountPriceDetails()->delete();
+            $car->additionalDetails()?->delete();
+            $car->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Car deleted successfully',
+            ], 200);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Car not found',
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('Car delete failed', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete car',
                 'error' => $e->getMessage(),
             ], 500);
         }
