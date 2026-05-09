@@ -9,6 +9,94 @@ use Illuminate\Support\Facades\Validator;
 
 class EnquiryController extends Controller
 {
+    protected array $allowedStatuses = [
+        'Pending',
+        'Processed',
+        'Invalid',
+        'Paid',
+        'Payment Pending',
+        'Completed',
+    ];
+
+    /**
+     * List enquiries (admin).
+     * Query params:
+     * - order: asc|desc (default desc)
+     */
+    public function list(Request $request): JsonResponse
+    {
+        $order = strtolower((string) $request->query('order', 'desc'));
+        $order = in_array($order, ['asc', 'desc'], true) ? $order : 'desc';
+
+        $rows = EnquiryDetail::orderBy('id', $order)->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $rows,
+        ]);
+    }
+
+    /**
+     * Show one enquiry (admin).
+     */
+    public function show(int $id): JsonResponse
+    {
+        try {
+            $row = EnquiryDetail::findOrFail($id);
+
+            return response()->json([
+                'success' => true,
+                'data' => $row,
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Enquiry not found',
+            ], 404);
+        }
+    }
+
+    /**
+     * Update enquiry status (admin).
+     */
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'status' => 'required|in:' . implode(',', $this->allowedStatuses),
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $row = EnquiryDetail::findOrFail($id);
+            $row->status = $request->input('status');
+            $row->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Enquiry updated successfully',
+                'data' => $row,
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Enquiry not found',
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update enquiry',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     /**
      * Add a new enquiry and store it in enquiry_details.
      */
@@ -21,15 +109,6 @@ class EnquiryController extends Controller
         if (!isset($input['pick_location']) && isset($input['pickup_location'])) $input['pick_location'] = $input['pickup_location'];
         if (!isset($input['drop_location']) && isset($input['drop_location'])) $input['drop_location'] = $input['drop_location'];
 
-        $allowedStatuses = [
-            'Pending',
-            'Processed',
-            'Invalid',
-            'Paid',
-            'Payment Pending',
-            'Completed',
-        ];
-
         $validator = Validator::make($input, [
             'name' => 'required|string|max:255',
             'email_address' => 'nullable|email|max:255',
@@ -39,7 +118,7 @@ class EnquiryController extends Controller
             'pick_location' => 'nullable|string',
             'drop_location' => 'nullable|string',
             'address' => 'nullable|string',
-            'status' => 'nullable|in:' . implode(',', $allowedStatuses),
+            'status' => 'nullable|in:' . implode(',', $this->allowedStatuses),
         ]);
 
         if ($validator->fails()) {

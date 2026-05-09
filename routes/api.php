@@ -25,6 +25,9 @@ Route::post('/customer/add', [CustomerController::class, 'add']);
 
 Route::post('/booking/add', [BookingController::class, 'add']);
 
+Route::get('/admin/enquiry/list', [EnquiryController::class, 'list']);
+Route::get('/admin/enquiry/{id}', [EnquiryController::class, 'show']);
+Route::post('/admin/enquiry/update/{id}', [EnquiryController::class, 'update']);
 Route::post('/enquiry/add', [EnquiryController::class, 'add']);
 
 // Admin settings
